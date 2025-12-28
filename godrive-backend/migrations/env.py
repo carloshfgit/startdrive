@@ -4,6 +4,7 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from app.db.base import Base # <--- Adicione este import!
+from app.models.user import User  # <--- ADICIONE ESTA LINHA AQUI!
 import sys
 import os
 

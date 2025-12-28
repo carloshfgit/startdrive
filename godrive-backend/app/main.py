@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from app.api.v1.router import api_router # <--- Adicione o import
+from app.core.config import settings     # <--- Adicione o import
 
 # Inicializa a aplicação
 app = FastAPI(
@@ -6,6 +8,8 @@ app = FastAPI(
     description="Backend do Marketplace de Aulas de Direção",
     version="1.0.0"
 )
+
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # Rota de Health Check (Verificação de Saúde)
 @app.get("/")
