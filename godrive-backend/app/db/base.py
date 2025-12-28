@@ -1,4 +1,6 @@
 from sqlalchemy.ext.declarative import declarative_base
 
-# Classe base para os Models
 Base = declarative_base()
+
+# Importamos os modelos aqui para o Alembic detectá-los
+from app.models.user import User
