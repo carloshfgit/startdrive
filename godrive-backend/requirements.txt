@@ -1,0 +1,19 @@
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6  # Para upload de arquivos (necessário para Login OAuth2)
+
+# Banco de Dados & ORM
+sqlalchemy==2.0.25
+alembic==1.13.1          # Migrações
+psycopg2-binary==2.9.9   # Driver PostgreSQL
+geoalchemy2==0.14.3      # Suporte a PostGIS no SQLAlchemy [cite: 73]
+
+# Autenticação e Segurança (JWT) [cite: 9]
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Validação e Configuração
+pydantic==2.5.3
+pydantic-settings==2.1.0 # Para ler .env
+email-validator==2.1.0.post1
