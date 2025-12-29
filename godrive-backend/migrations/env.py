@@ -3,10 +3,14 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
-from app.db.base import Base # <--- Adicione este import!
-from app.models.user import User  # <--- ADICIONE ESTA LINHA AQUI!
 import sys
 import os
+# Adicione o diretório atual ao path para achar o app
+sys.path.insert(0, os.getcwd())
+
+from app.db.base import Base
+# Importe o package de modelos para registrar todos os modelos (para alembic autogenerate)
+import app.models
 
 from alembic import context
 
