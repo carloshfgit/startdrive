@@ -1,3 +1,5 @@
+from app.schemas.availability import AvailabilityCreate, AvailabilityResponse
+from app.repositories.availability_repository import AvailabilityRepository
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -9,6 +11,7 @@ from app.models.instructor import InstructorProfile # <--- ADICIONE ESTE IMPORT
 
 router = APIRouter()
 repo = InstructorRepository()
+availability_repo = AvailabilityRepository()
 
 @router.post("/", response_model=InstructorResponse)
 def create_instructor_profile(
@@ -55,3 +58,38 @@ def search_instructors(
     """
     instructors = repo.get_by_radius(db, lat=latitude, long=longitude, radius_km=radius)
     return instructors
+
+@router.post("/availability", response_model=AvailabilityResponse)
+def add_availability(
+    availability_in: AvailabilityCreate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    Adiciona um horário recorrente na agenda do instrutor logado.
+    """
+    # Verifica se é instrutor
+    if not current_user.instructor_profile:
+        raise HTTPException(status_code=400, detail="Usuário não é um instrutor.")
+        
+    # TODO: Validar se start_time < end_time
+    # TODO: Validar sobreposição de horários (Fase de refinamento)
+    
+    return availability_repo.create(
+        db=db, 
+        instructor_id=current_user.instructor_profile.id, 
+        availability=availability_in
+    )
+
+@router.get("/availability", response_model=List[AvailabilityResponse])
+def list_my_availability(
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    Lista todos os horários configurados pelo instrutor logado.
+    """
+    if not current_user.instructor_profile:
+        raise HTTPException(status_code=400, detail="Usuário não é um instrutor.")
+        
+    return availability_repo.get_by_instructor(db, instructor_id=current_user.instructor_profile.id)
