@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
 from app.models.ride import Ride, RideStatus
 from app.schemas.ride import RideCreate
+from sqlalchemy import extract, cast, Date
+from datetime import date
 
 class RideRepository:
     
@@ -29,3 +31,13 @@ class RideRepository:
     
     def get_by_id(self, db: Session, ride_id: int):
         return db.query(Ride).filter(Ride.id == ride_id).first()
+    
+    def get_by_instructor_and_date(self, db: Session, instructor_id: int, date_filter: date):
+        """
+        Busca todas as aulas de um instrutor que ocorrem em uma data específica (ano-mes-dia).
+        """
+        return db.query(Ride).filter(
+            Ride.instructor_id == instructor_id,
+            # Faz o cast do campo DateTime para Date para comparar apenas o dia
+            cast(Ride.scheduled_at, Date) == date_filter
+        ).all()

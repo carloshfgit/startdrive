@@ -8,6 +8,8 @@ from app.schemas.instructor import InstructorCreate, InstructorResponse
 from app.repositories.instructor_repository import InstructorRepository
 from app.models.user import User
 from app.models.instructor import InstructorProfile # <--- ADICIONE ESTE IMPORT
+from datetime import date, time # <--- Importe 'date' e 'time'
+from app.services.availability_service import AvailabilityService # <--- Importe o Serviço
 
 router = APIRouter()
 repo = InstructorRepository()
@@ -93,3 +95,19 @@ def list_my_availability(
         raise HTTPException(status_code=400, detail="Usuário não é um instrutor.")
         
     return availability_repo.get_by_instructor(db, instructor_id=current_user.instructor_profile.id)
+
+@router.get("/{instructor_id}/availability", response_model=List[time])
+def get_instructor_availability_slots(
+    instructor_id: int,
+    date: date = Query(..., description="Data para consultar disponibilidade (YYYY-MM-DD)"),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    Retorna os horários calculados (slots) disponíveis para um instrutor em uma data específica.
+    Exemplo de uso: /instructors/1/availability?date=2024-12-30
+    """
+    service = AvailabilityService()
+    available_slots = service.get_available_slots(db=db, instructor_id=instructor_id, query_date=date)
+    
+    return available_slots
