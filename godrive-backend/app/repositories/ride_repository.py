@@ -7,16 +7,16 @@ from datetime import date
 class RideRepository:
     
     def create(self, db: Session, student_id: int, ride_in: RideCreate, price: float):
-        """
-        Cria a reserva com status PENDING_PAYMENT e preço congelado.
-        """
         db_ride = Ride(
             student_id=student_id,
             instructor_id=ride_in.instructor_id,
             scheduled_at=ride_in.scheduled_at,
-            price=price, # Preço capturado no momento da reserva
+            price=price,
             status=RideStatus.PENDING_PAYMENT,
-            duration_minutes=50 # Padrão
+            duration_minutes=50,
+            # Mapeando os novos campos
+            pickup_latitude=ride_in.pickup_latitude,
+            pickup_longitude=ride_in.pickup_longitude
         )
         db.add(db_ride)
         db.commit()

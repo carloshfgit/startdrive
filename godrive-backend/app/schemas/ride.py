@@ -1,14 +1,23 @@
+# app/schemas/ride.py
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 from app.models.ride import RideStatus
 
-# Input: Aluno diz "Com quem" e "Quando"
+# Input: Criação da reserva (Booking)
 class RideCreate(BaseModel):
     instructor_id: int
     scheduled_at: datetime
-    # duration_minutes é opcional, assumiremos 50min padrão na lógica
+    # Novos campos obrigatórios para saber onde buscar o aluno
+    pickup_latitude: float
+    pickup_longitude: float
 
-# Output: Detalhes da reserva
+# Input: Início da aula (O instrutor envia onde ele está)
+class RideStart(BaseModel):
+    latitude: float
+    longitude: float
+
+# Output: Resposta da API
 class RideResponse(BaseModel):
     id: int
     student_id: int
@@ -17,6 +26,11 @@ class RideResponse(BaseModel):
     duration_minutes: int
     price: float
     status: RideStatus
+    
+    # Retornamos para conferência
+    pickup_latitude: Optional[float] = None
+    pickup_longitude: Optional[float] = None
+    
     created_at: datetime
 
     class Config:

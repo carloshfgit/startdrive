@@ -11,6 +11,8 @@ from app.schemas.ride import RideCreate, RideResponse
 from app.repositories.ride_repository import RideRepository
 from app.services.availability_service import AvailabilityService
 from app.services.socket_service import socket_manager # [Novo Import] para notificar o app
+from app.schemas.ride import RideCreate, RideResponse, RideStart # <--- Importe RideStart
+from app.utils.geo import haversine # <--- Importe a função
 
 router = APIRouter()
 ride_repo = RideRepository()
@@ -147,5 +149,55 @@ async def finish_ride(
     
     # Opcional: Forçar desconexão dos sockets desta sala
     # socket_manager.close_room(ride.id) 
+
+@router.patch("/{ride_id}/start", response_model=RideResponse)
+async def start_ride(
+    ride_id: int,
+    start_in: RideStart, # <--- Novo Payload
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    Instrutor inicia a aula. Valida se ele está próximo ao local de encontro.
+    """
+    ride = ride_repo.get_by_id(db, ride_id)
+    if not ride:
+        raise HTTPException(status_code=404, detail="Aula não encontrada.")
+
+    # 1. Validação de Autorização (já existente)
+    if ride.instructor_id != current_user.id:
+         # Verificação simplificada assumindo ID User = ID Instrutor
+         # (Se tiver ID separado, ajustar conforme seu modelo)
+         raise HTTPException(status_code=403, detail="Apenas o instrutor responsável pode iniciar a aula.")
+
+    # 2. Validação de Status (já existente)
+    if ride.status != RideStatus.SCHEDULED:
+        raise HTTPException(status_code=400, detail=f"Não é possível iniciar uma aula com status '{ride.status}'.")
+
+    # 3. VALIDAÇÃO GEO-FENCING (NOVO)
+    # Tolerância de 150 metros (0.15 km)
+    MAX_DISTANCE_KM = 0.15
+    
+    # Verifica se a aula tem local de encontro definido (retrocompatibilidade)
+    if ride.pickup_latitude and ride.pickup_longitude:
+        distance = haversine(
+            ride.pickup_latitude, ride.pickup_longitude,
+            start_in.latitude, start_in.longitude
+        )
+        
+        if distance > MAX_DISTANCE_KM:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Você está muito longe do aluno ({int(distance*1000)}m). Aproxime-se do local de encontro para iniciar."
+            )
+    
+    # 4. Atualização de Estado
+    ride.status = RideStatus.IN_PROGRESS
+    ride.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(ride)
+
+    # 5. Notificação via WebSocket
+    await socket_manager.broadcast_location(ride.id, {"type": "RIDE_STARTED", "message": "A aula começou!"})
 
     return ride
