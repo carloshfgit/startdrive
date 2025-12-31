@@ -4,4 +4,6 @@ from .instructor import InstructorProfile
 # Adições da Fase 2:
 from .availability import Availability
 from .ride import Ride
+# Adições da Fase 4 (LMS):
 from .review import Review
+from .course import Course, Module, Lesson, Enrollment 
