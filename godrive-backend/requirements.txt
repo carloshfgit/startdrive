@@ -18,3 +18,5 @@ bcrypt==4.0.1
 pydantic==2.5.3
 pydantic-settings==2.1.0 # Para ler .env
 email-validator==2.1.0.post1
+
+stripe==8.1.0  # SDK para processamento de pagamentos

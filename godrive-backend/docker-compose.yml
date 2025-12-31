@@ -24,6 +24,8 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/godrive
+      - STRIPE_API_KEY=sk_test_placeholder  # <--- Adicionar
+      - STRIPE_WEBHOOK_SECRET=whsec_placeholder # <--- Adicionar
     depends_on:
       - db
 

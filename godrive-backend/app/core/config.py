@@ -17,6 +17,15 @@ class Settings(BaseSettings):
     POSTGRES_DB: str
     DATABASE_URL: str
 
+    # --- NOVOS CAMPOS: INTEGRAÇÃO FINANCEIRA (STRIPE) ---
+    # Chave secreta para criar cobranças (começa com sk_test_...)
+    STRIPE_API_KEY: str 
+    # Chave para assinar o Webhook e evitar fraudes (começa com whsec_...)
+    STRIPE_WEBHOOK_SECRET: str 
+    
+    # Taxa da Plataforma (Ex: 0.15 para 15%)
+    PLATFORM_FEE_PERCENT: float = 0.15
+
     class Config:
         env_file = ".env"
         case_sensitive = True
