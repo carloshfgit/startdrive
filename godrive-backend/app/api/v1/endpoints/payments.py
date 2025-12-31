@@ -32,15 +32,14 @@ def create_payment_intent(
         raise HTTPException(status_code=400, detail="Esta aula não está pendente de pagamento.")
 
     # 3. Obter ID Stripe do Instrutor
-    # O instrutor está na relação ride.instructor (que é um InstructorProfile)
     instructor_stripe_id = ride.instructor.stripe_account_id
     
-    # OBS: Em produção, você deve impedir pagamentos se o instrutor não tiver conta configurada
+    # [CORREÇÃO] Bloqueio Rígido: Não permitir pagamento sem destino configurado
     if not instructor_stripe_id:
-        # Para testes, podemos deixar passar sem split (dinheiro fica todo na plataforma)
-        # ou lançar erro:
-        # raise HTTPException(status_code=400, detail="Instrutor não configurou recebimentos.")
-        print("AVISO: Instrutor sem conta Stripe. O pagamento irá integral para a plataforma.")
+        raise HTTPException(
+            status_code=400, 
+            detail="O instrutor ainda não configurou os dados bancários para recebimento."
+        )
 
     # 4. Chamar o serviço
     try:
