@@ -1,7 +1,14 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Float, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, Float, Text, Enum
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geometry
 from app.db.base import Base
+import enum
+
+class InstructorStatus(str, enum.Enum):
+    PENDING = "pending"
+    VERIFIED = "verified"
+    REJECTED = "rejected"
+    BLOCKED = "blocked"
 
 class InstructorProfile(Base):
     __tablename__ = "instructor_profiles"
@@ -18,5 +25,10 @@ class InstructorProfile(Base):
     # --- CAMPO MÁGICO DO POSTGIS ---
     # Geometry('POINT', srid=4326) armazena coordenadas GPS (Lat/Lon)
     location = Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)
+
+    # NOVOS CAMPOS
+    status = Column(Enum(InstructorStatus), default=InstructorStatus.PENDING, nullable=False)
+    cnh_url = Column(String, nullable=True)
+    vehicle_doc_url = Column(String, nullable=True)
 
     user = relationship("User", back_populates="instructor_profile")

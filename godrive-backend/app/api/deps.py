@@ -48,3 +48,12 @@ def get_current_user(
         raise HTTPException(status_code=400, detail="Usuário inativo")
         
     return user
+
+def get_current_active_superuser(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=400, detail="O usuário não tem privilégios suficientes (Admin Required)"
+        )
+    return current_user

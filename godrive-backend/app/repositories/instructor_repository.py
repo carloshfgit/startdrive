@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.models.instructor import InstructorProfile
+from app.models.instructor import InstructorProfile, InstructorStatus # <--- Importe o Enum
 from app.models.user import User
 from app.schemas.instructor import InstructorCreate
 from geoalchemy2.elements import WKTElement
@@ -68,3 +68,25 @@ class InstructorRepository:
             response.append(resp)
             
         return response
+    
+    # --- NOVOS MÉTODOS PARA ADMIN ---
+    
+    def get_pending(self, db: Session):
+        return db.query(InstructorProfile).filter(InstructorProfile.status == InstructorStatus.PENDING).all()
+
+    def update_status(self, db: Session, instructor_id: int, new_status: InstructorStatus):
+        profile = db.query(InstructorProfile).filter(InstructorProfile.id == instructor_id).first()
+        if profile:
+            profile.status = new_status
+            db.commit()
+            db.refresh(profile)
+        return profile
+    
+    def update_documents(self, db: Session, instructor_id: int, cnh_url: str, vehicle_doc_url: str):
+        profile = db.query(InstructorProfile).filter(InstructorProfile.id == instructor_id).first()
+        if profile:
+            if cnh_url: profile.cnh_url = cnh_url
+            if vehicle_doc_url: profile.vehicle_doc_url = vehicle_doc_url
+            db.commit()
+            db.refresh(profile)
+        return profile

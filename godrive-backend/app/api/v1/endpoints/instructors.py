@@ -10,10 +10,50 @@ from app.models.user import User
 from app.models.instructor import InstructorProfile # <--- ADICIONE ESTE IMPORT
 from datetime import date, time # <--- Importe 'date' e 'time'
 from app.services.availability_service import AvailabilityService # <--- Importe o Serviço
+import shutil
+import os
+from fastapi import File, UploadFile
 
 router = APIRouter()
 repo = InstructorRepository()
 availability_repo = AvailabilityRepository()
+
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@router.post("/me/documents")
+def upload_documents(
+    cnh_file: UploadFile = File(None),
+    vehicle_file: UploadFile = File(None),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    Upload de CNH e Documento do Veículo.
+    Salva localmente e atualiza URLs no perfil.
+    """
+    if not current_user.instructor_profile:
+        raise HTTPException(status_code=400, detail="Perfil de instrutor não encontrado.")
+
+    cnh_url = None
+    vehicle_url = None
+
+    # Função auxiliar simples para salvar
+    def save_file(file: UploadFile, prefix: str):
+        file_path = f"{UPLOAD_DIR}/{prefix}_{current_user.id}_{file.filename}"
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return file_path
+
+    if cnh_file:
+        cnh_url = save_file(cnh_file, "CNH")
+    
+    if vehicle_file:
+        vehicle_url = save_file(vehicle_file, "VEHICLE")
+
+    repo.update_documents(db, current_user.id, cnh_url, vehicle_url)
+    
+    return {"message": "Documentos enviados com sucesso. Aguarde aprovação."}
 
 @router.post("/", response_model=InstructorResponse)
 def create_instructor_profile(
