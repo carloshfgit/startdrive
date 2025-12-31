@@ -4,3 +4,4 @@ from .instructor import InstructorProfile
 # Adições da Fase 2:
 from .availability import Availability
 from .ride import Ride
+from .review import Review
