@@ -4,59 +4,80 @@ from sqlalchemy.orm import Session
 from app.api import deps
 from app.models.user import User
 from app.models.ride import Ride, RideStatus
+from app.models.course import Course # <--- Novo Import
 from app.services.payment_service import PaymentService
+from app.repositories.course_repository import CourseRepository # <--- Novo Import
 
 router = APIRouter()
 payment_service = PaymentService()
+course_repo = CourseRepository() # <--- Instância
 
-@router.post("/create-intent/{ride_id}")
-def create_payment_intent(
+# --- PAGAMENTO DE AULAS (RIDE) ---
+
+@router.post("/create-intent/ride/{ride_id}")
+def create_ride_payment_intent(
     ride_id: int,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
-    """
-    Inicia o pagamento de uma aula.
-    Retorna o 'client_secret' para o App Mobile processar o cartão.
-    """
-    # 1. Buscar a aula
+    """Inicia o pagamento de uma aula (Booking)."""
     ride = db.query(Ride).filter(Ride.id == ride_id).first()
     if not ride:
         raise HTTPException(status_code=404, detail="Aula não encontrada.")
     
-    # 2. Validações
     if ride.student_id != current_user.id:
         raise HTTPException(status_code=403, detail="Você não é o aluno desta aula.")
     
     if ride.status != RideStatus.PENDING_PAYMENT:
         raise HTTPException(status_code=400, detail="Esta aula não está pendente de pagamento.")
 
-    # 3. Obter ID Stripe do Instrutor
     instructor_stripe_id = ride.instructor.stripe_account_id
-    
-    # [CORREÇÃO] Bloqueio Rígido: Não permitir pagamento sem destino configurado
     if not instructor_stripe_id:
         raise HTTPException(
             status_code=400, 
-            detail="O instrutor ainda não configurou os dados bancários para recebimento."
+            detail="O instrutor não possui conta bancária configurada."
         )
 
-    # 4. Chamar o serviço
     try:
-        result = payment_service.create_payment_intent(
+        # Chama o método específico para Rides (renomeado no service)
+        return payment_service.create_ride_payment_intent(
             ride_id=ride.id,
             amount=ride.price,
             instructor_stripe_id=instructor_stripe_id
         )
-        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# --- PAGAMENTO DE CURSOS (NOVO) ---
+
+@router.post("/create-intent/course/{course_id}")
+def create_course_payment_intent(
+    course_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """Inicia o pagamento de um curso (LMS)."""
+    course = course_repo.get_by_id(db, course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Curso não encontrado.")
+    
+    # Verifica se já comprou
+    if course_repo.get_enrollment(db, current_user.id, course_id):
+        raise HTTPException(status_code=400, detail="Você já possui este curso.")
+
+    try:
+        return payment_service.create_course_payment_intent(
+            course_id=course.id,
+            amount=course.price,
+            user_id=current_user.id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- WEBHOOK (O CÉREBRO) ---
+
 @router.post("/webhook")
 async def stripe_webhook(request: Request, db: Session = Depends(deps.get_db)):
-    """
-    Rota que o Stripe chama automaticamente quando o pagamento muda de status.
-    """
     body = await request.body()
     sig_header = request.headers.get("stripe-signature")
 
@@ -65,16 +86,32 @@ async def stripe_webhook(request: Request, db: Session = Depends(deps.get_db)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Processar o evento
     if event["type"] == "payment_intent.succeeded":
         payment_intent = event["data"]["object"]
-        ride_id = int(payment_intent["metadata"]["ride_id"])
-        
-        # Atualizar status da aula para SCHEDULED (Confirmada)
-        ride = db.query(Ride).filter(Ride.id == ride_id).first()
-        if ride:
-            ride.status = RideStatus.SCHEDULED
-            db.commit()
-            print(f"Pagamento confirmado para a aula {ride_id}")
+        metadata = payment_intent.get("metadata", {})
+        product_type = metadata.get("product_type")
+
+        # ROTA 1: Pagamento de AULA
+        if product_type == "ride":
+            ride_id = int(metadata.get("ride_id"))
+            ride = db.query(Ride).filter(Ride.id == ride_id).first()
+            if ride:
+                ride.status = RideStatus.SCHEDULED
+                db.commit()
+                print(f"WEBHOOK: Aula {ride_id} confirmada.")
+
+        # ROTA 2: Pagamento de CURSO
+        elif product_type == "course":
+            course_id = int(metadata.get("course_id"))
+            user_id = int(metadata.get("user_id"))
+            
+            # Busca o preço real pago (convertendo centavos de volta)
+            amount_paid = payment_intent["amount"] / 100.0
+            
+            # Efetiva a matrícula
+            # Verifica novamente se já não existe para evitar erro de constraint
+            if not course_repo.get_enrollment(db, user_id, course_id):
+                course_repo.enroll_user(db, user_id, course_id, amount_paid)
+                print(f"WEBHOOK: Matrícula confirmada User {user_id} -> Curso {course_id}")
 
     return {"status": "success"}

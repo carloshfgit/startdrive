@@ -2,58 +2,71 @@
 import stripe
 from app.core.config import settings
 
-# Configura a chave assim que o módulo é importado
 if settings.STRIPE_API_KEY:
     stripe.api_key = settings.STRIPE_API_KEY
 
 class PaymentService:
-    def create_payment_intent(self, ride_id: int, amount: float, instructor_stripe_id: str):
+    
+    def _calculate_cents(self, amount: float) -> int:
+        return int(amount * 100)
+
+    def create_ride_payment_intent(self, ride_id: int, amount: float, instructor_stripe_id: str):
         """
-        Gera a intenção de pagamento no Stripe com Split automático.
+        Pagamento de AULA (Com Split para o Instrutor).
         """
         try:
-            # 1. Converter valor para centavos (Stripe usa inteiros)
-            # Ex: R$ 100.00 -> 10000 centavos
-            amount_cents = int(amount * 100)
-            
-            # 2. Calcular a comissão da plataforma
-            # Ex: 15% de 10000 -> 1500 centavos
+            amount_cents = self._calculate_cents(amount)
             fee_cents = int(amount_cents * settings.PLATFORM_FEE_PERCENT)
             
-            # 3. Criar a Intent
-            # Se o instrutor tiver conta conectada, fazemos o split via 'transfer_data'
             intent_data = {
                 "amount": amount_cents,
                 "currency": "brl",
                 "automatic_payment_methods": {"enabled": True},
-                "metadata": {"ride_id": str(ride_id)}, # ID para rastrearmos depois no Webhook
+                "metadata": {
+                    "product_type": "ride", # Identificador do tipo
+                    "ride_id": str(ride_id)
+                },
             }
 
-            # Se o instrutor tem conta no Stripe, configuramos o Split
+            # Configura o Split (Instrutor recebe, Plataforma fica com a taxa)
             if instructor_stripe_id:
                 intent_data["application_fee_amount"] = fee_cents
                 intent_data["transfer_data"] = {
                     "destination": instructor_stripe_id,
                 }
             
-            # Criação efetiva no Stripe
             intent = stripe.PaymentIntent.create(**intent_data)
-            
-            return {
-                "client_secret": intent.client_secret, # O App usa isso para finalizar o pgto
-                "id": intent.id
-            }
+            return {"client_secret": intent.client_secret, "id": intent.id}
 
         except stripe.error.StripeError as e:
-            # Erro específico do Stripe (ex: cartão recusado, conta inválida)
             raise ValueError(f"Erro no Stripe: {e.user_message or str(e)}")
-        except Exception as e:
-            raise ValueError(f"Erro interno de pagamento: {str(e)}")
+            
+    def create_course_payment_intent(self, course_id: int, amount: float, user_id: int):
+        """
+        Pagamento de CURSO (Sem Split - Venda direta da Plataforma).
+        """
+        try:
+            amount_cents = self._calculate_cents(amount)
+            
+            intent_data = {
+                "amount": amount_cents,
+                "currency": "brl",
+                "automatic_payment_methods": {"enabled": True},
+                "metadata": {
+                    "product_type": "course", # Identificador do tipo
+                    "course_id": str(course_id),
+                    "user_id": str(user_id) # Precisamos saber quem matriculou
+                },
+            }
+            
+            # Sem transfer_data, o dinheiro fica todo na conta da plataforma
+            intent = stripe.PaymentIntent.create(**intent_data)
+            return {"client_secret": intent.client_secret, "id": intent.id}
+
+        except stripe.error.StripeError as e:
+            raise ValueError(f"Erro no Stripe: {e.user_message or str(e)}")
 
     def process_webhook_event(self, body: bytes, sig_header: str):
-        """
-        Valida a assinatura do Webhook para garantir que veio do Stripe.
-        """
         try:
             event = stripe.Webhook.construct_event(
                 payload=body,
