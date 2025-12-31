@@ -2,60 +2,66 @@
 import stripe
 from app.core.config import settings
 
-# Configura a chave assim que o módulo é carregado
-stripe.api_key = settings.STRIPE_API_KEY
+# Configura a chave assim que o módulo é importado
+if settings.STRIPE_API_KEY:
+    stripe.api_key = settings.STRIPE_API_KEY
 
 class PaymentService:
-    def create_payment_intent(self, ride_id: int, amount: float, instructor_account_id: str):
+    def create_payment_intent(self, ride_id: int, amount: float, instructor_stripe_id: str):
         """
-        Cria uma intenção de pagamento no Stripe.
-        
-        Args:
-            ride_id: ID da aula (para metadados)
-            amount: Valor total em Reais (será convertido para centavos)
-            instructor_account_id: ID da conta Stripe Connect do instrutor (para o split)
+        Gera a intenção de pagamento no Stripe com Split automático.
         """
         try:
-            # O Stripe trabalha com centavos (R$ 50,00 -> 5000)
+            # 1. Converter valor para centavos (Stripe usa inteiros)
+            # Ex: R$ 100.00 -> 10000 centavos
             amount_cents = int(amount * 100)
             
-            # Cálculo do Split (Quanto fica para a plataforma?)
-            fee = int(amount_cents * settings.PLATFORM_FEE_PERCENT)
+            # 2. Calcular a comissão da plataforma
+            # Ex: 15% de 10000 -> 1500 centavos
+            fee_cents = int(amount_cents * settings.PLATFORM_FEE_PERCENT)
             
-            # Cria a Intent
-            intent = stripe.PaymentIntent.create(
-                amount=amount_cents,
-                currency='brl',
-                automatic_payment_methods={'enabled': True},
-                application_fee_amount=fee, # Nossa comissão
-                transfer_data={
-                    'destination': instructor_account_id, # O resto vai pro instrutor
-                },
-                metadata={'ride_id': ride_id} # Importante para o Webhook saber qual aula atualizar
-            )
+            # 3. Criar a Intent
+            # Se o instrutor tiver conta conectada, fazemos o split via 'transfer_data'
+            intent_data = {
+                "amount": amount_cents,
+                "currency": "brl",
+                "automatic_payment_methods": {"enabled": True},
+                "metadata": {"ride_id": str(ride_id)}, # ID para rastrearmos depois no Webhook
+            }
+
+            # Se o instrutor tem conta no Stripe, configuramos o Split
+            if instructor_stripe_id:
+                intent_data["application_fee_amount"] = fee_cents
+                intent_data["transfer_data"] = {
+                    "destination": instructor_stripe_id,
+                }
+            
+            # Criação efetiva no Stripe
+            intent = stripe.PaymentIntent.create(**intent_data)
             
             return {
-                "client_secret": intent.client_secret, # O App Mobile usa isso para abrir o checkout
+                "client_secret": intent.client_secret, # O App usa isso para finalizar o pgto
                 "id": intent.id
             }
-            
-        except Exception as e:
-            # Em produção, logar o erro corretamente
-            print(f"Erro no Stripe: {e}")
-            raise e
 
-    def process_webhook(self, body: bytes, sig_header: str):
+        except stripe.error.StripeError as e:
+            # Erro específico do Stripe (ex: cartão recusado, conta inválida)
+            raise ValueError(f"Erro no Stripe: {e.user_message or str(e)}")
+        except Exception as e:
+            raise ValueError(f"Erro interno de pagamento: {str(e)}")
+
+    def process_webhook_event(self, body: bytes, sig_header: str):
         """
-        Valida e processa eventos enviados pelo Stripe (ex: pagamento aprovado).
+        Valida a assinatura do Webhook para garantir que veio do Stripe.
         """
-        event = None
         try:
             event = stripe.Webhook.construct_event(
-                body, sig_header, settings.STRIPE_WEBHOOK_SECRET
+                payload=body,
+                sig_header=sig_header,
+                secret=settings.STRIPE_WEBHOOK_SECRET
             )
-        except ValueError as e:
-            raise Exception("Invalid payload")
-        except stripe.error.SignatureVerificationError as e:
-            raise Exception("Invalid signature")
-
-        return event
+            return event
+        except ValueError:
+            raise ValueError("Payload inválido")
+        except stripe.error.SignatureVerificationError:
+            raise ValueError("Assinatura do Webhook inválida")

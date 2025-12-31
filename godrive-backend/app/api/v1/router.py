@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import users, login, instructors, rides # <--- Adicione rides
+from app.api.v1.endpoints import users, login, instructors, rides, payments
 
 api_router = APIRouter()
 
@@ -8,3 +9,4 @@ api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(instructors.router, prefix="/instructors", tags=["instructors"])
 # Adicione esta linha:
 api_router.include_router(rides.router, prefix="/rides", tags=["rides"])
+api_router.include_router(payments.router, prefix="/payments", tags=["payments"])
