@@ -1,18 +1,20 @@
 from typing import List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.models.user import User
 from app.models.instructor import InstructorProfile
+from app.models.ride import Ride, RideStatus
 from app.schemas.ride import RideCreate, RideResponse
 from app.repositories.ride_repository import RideRepository
-from app.services.availability_service import AvailabilityService  # [Novo Import]
+from app.services.availability_service import AvailabilityService
+from app.services.socket_service import socket_manager # [Novo Import] para notificar o app
 
 router = APIRouter()
 ride_repo = RideRepository()
-availability_service = AvailabilityService()  # [Instância do Serviço]
+availability_service = AvailabilityService()
 
 @router.post("/", response_model=RideResponse, status_code=status.HTTP_201_CREATED)
 def create_ride(
@@ -22,10 +24,8 @@ def create_ride(
 ):
     """
     Cria uma solicitação de aula (Booking).
-    Valida se a data é futura e se o instrutor possui disponibilidade.
     """
-    # 1. Validação Temporal: Não permitir agendamento no passado
-    # Garante que ambos estejam em UTC para comparação correta
+    # 1. Validação Temporal
     now = datetime.now(timezone.utc)
     if ride_in.scheduled_at < now:
         raise HTTPException(
@@ -33,31 +33,26 @@ def create_ride(
             detail="Não é possível agendar aulas para uma data/hora no passado."
         )
 
-    # 2. Validação de Disponibilidade: O instrutor está livre neste horário?
+    # 2. Validação de Disponibilidade
     available_slots = availability_service.get_available_slots(
         db=db,
         instructor_id=ride_in.instructor_id,
         query_date=ride_in.scheduled_at.date()
     )
-    
-    # Extrai o horário (time) da requisição para comparar com os slots
     request_time = ride_in.scheduled_at.time()
-    
     if request_time not in available_slots:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="O instrutor não está disponível neste horário."
         )
 
-    # 3. Busca o instrutor para pegar o preço atual
+    # 3. Busca o instrutor e Preço
     instructor = db.query(InstructorProfile).filter(InstructorProfile.id == ride_in.instructor_id).first()
     if not instructor:
         raise HTTPException(status_code=404, detail="Instrutor não encontrado.")
     
-    # 4. Define o preço
     price = instructor.hourly_rate if instructor.hourly_rate else 0.0
     
-    # 5. Cria a reserva
     return ride_repo.create(db=db, student_id=current_user.id, ride_in=ride_in, price=price)
 
 @router.get("/", response_model=List[RideResponse])
@@ -67,13 +62,90 @@ def read_my_rides(
 ):
     """
     Lista as aulas do usuário logado.
-    Funciona tanto para Aluno quanto para Instrutor.
     """
     if current_user.user_type == "instructor":
-        # Se for instrutor, busca pelo perfil
         if not current_user.instructor_profile:
             return []
         return ride_repo.get_by_instructor(db, instructor_id=current_user.instructor_profile.id)
     else:
-        # Se for aluno, busca pelo ID de usuário
         return ride_repo.get_by_student(db, student_id=current_user.id)
+
+# --- NOVOS ENDPOINTS DE CONTROLE DE ESTADO ---
+
+@router.patch("/{ride_id}/start", response_model=RideResponse)
+async def start_ride(
+    ride_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    Instrutor inicia a aula.
+    Muda status para IN_PROGRESS e notifica o aluno via WebSocket.
+    """
+    ride = ride_repo.get_by_id(db, ride_id)
+    if not ride:
+        raise HTTPException(status_code=404, detail="Aula não encontrada.")
+
+    # 1. Apenas o Instrutor pode iniciar
+    if ride.instructor_id != current_user.id and getattr(current_user.instructor_profile, 'id', None) != ride.instructor_id:
+         # Verificação dupla para garantir (id do user ou id do perfil)
+         if current_user.id != ride.instructor_id: # Simplificação assumindo ID User = ID Instrutor
+            raise HTTPException(status_code=403, detail="Apenas o instrutor responsável pode iniciar a aula.")
+
+    # 2. Validação de Status
+    if ride.status != RideStatus.SCHEDULED:
+        raise HTTPException(status_code=400, detail=f"Não é possível iniciar uma aula com status '{ride.status}'. A aula deve estar agendada e paga.")
+
+    # 3. Validação de Horário (Tolerância de 15 min antes ou depois)
+    # now = datetime.now(timezone.utc)
+    # scheduled = ride.scheduled_at
+    # margin = timedelta(minutes=15)
+    # if not (scheduled - margin <= now <= scheduled + timedelta(minutes=60)): # 60 min de duração max estimada para start
+    #     raise HTTPException(status_code=400, detail="Você só pode iniciar a aula próximo ao horário agendado.")
+
+    # 4. Atualização de Estado
+    ride.status = RideStatus.IN_PROGRESS
+    ride.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(ride)
+
+    # 5. Notificação via WebSocket (Opcional, mas recomendado)
+    await socket_manager.broadcast_location(ride.id, {"type": "RIDE_STARTED", "message": "A aula começou!"})
+
+    return ride
+
+@router.patch("/{ride_id}/finish", response_model=RideResponse)
+async def finish_ride(
+    ride_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    Instrutor finaliza a aula.
+    Muda status para COMPLETED e encerra rastreamento.
+    """
+    ride = ride_repo.get_by_id(db, ride_id)
+    if not ride:
+        raise HTTPException(status_code=404, detail="Aula não encontrada.")
+
+    # 1. Apenas o Instrutor pode finalizar
+    if ride.instructor_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Apenas o instrutor responsável pode finalizar a aula.")
+
+    # 2. Validação de Status
+    if ride.status != RideStatus.IN_PROGRESS:
+        raise HTTPException(status_code=400, detail="A aula não está em andamento.")
+
+    # 3. Atualização de Estado
+    ride.status = RideStatus.COMPLETED
+    ride.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(ride)
+
+    # 4. Notificação Final via WebSocket
+    await socket_manager.broadcast_location(ride.id, {"type": "RIDE_FINISHED", "message": "A aula foi finalizada."})
+    
+    # Opcional: Forçar desconexão dos sockets desta sala
+    # socket_manager.close_room(ride.id) 
+
+    return ride
