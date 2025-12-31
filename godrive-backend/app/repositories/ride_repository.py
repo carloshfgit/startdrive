@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Session
 from app.models.ride import Ride, RideStatus
 from app.schemas.ride import RideCreate
-from sqlalchemy import extract, cast, Date
+from sqlalchemy import extract, cast, Date, and_, or_
 from datetime import date
+from app.models.review import Review
 
 class RideRepository:
     
@@ -25,6 +26,25 @@ class RideRepository:
 
     def get_by_student(self, db: Session, student_id: int):
         return db.query(Ride).filter(Ride.student_id == student_id).order_by(Ride.scheduled_at.desc()).all()
+
+    def get_pending_reviews_for_user(self, db: Session, user_id: int):
+        """
+        Busca aulas que foram concluídas mas que o usuário (Aluno ou Instrutor) 
+        ainda não avaliou.
+        """
+        return db.query(Ride).outerjoin(
+            Review,
+            and_(
+                Review.ride_id == Ride.id,
+                Review.reviewer_id == user_id
+            )
+        ).filter(
+            Ride.status == RideStatus.COMPLETED,
+            # O usuário deve ser participante da aula
+            or_(Ride.student_id == user_id, Ride.instructor_id == user_id),
+            # E não deve ter avaliação criada por ele (Review.id IS NULL)
+            Review.id == None
+        ).all()
 
     def get_by_instructor(self, db: Session, instructor_id: int):
         return db.query(Ride).filter(Ride.instructor_id == instructor_id).order_by(Ride.scheduled_at.desc()).all()
