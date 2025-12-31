@@ -7,3 +7,4 @@ from .ride import Ride
 # Adições da Fase 4 (LMS):
 from .review import Review
 from .course import Course, Module, Lesson, Enrollment 
+from .quiz import Quiz, Question, QuestionOption, UserQuizAttempt
