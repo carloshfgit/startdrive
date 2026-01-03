@@ -1,7 +1,7 @@
 from app.schemas.availability import AvailabilityCreate, AvailabilityResponse
 from app.repositories.availability_repository import AvailabilityRepository
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 from app.api import deps
 from app.schemas.instructor import InstructorCreate, InstructorResponse
@@ -13,6 +13,8 @@ from app.services.availability_service import AvailabilityService # <--- Importe
 import shutil
 import os
 from fastapi import File, UploadFile
+from fastapi_cache.decorator import cache
+from typing import List, Optional
 
 router = APIRouter()
 repo = InstructorRepository()
@@ -20,6 +22,26 @@ availability_repo = AvailabilityRepository()
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# --- FUNÇÃO HELPER PARA O CACHE ---
+def search_key_builder(
+    func,
+    namespace: Optional[str] = "",
+    _request: Request = None,  # Adicionei o _
+    _response: Response = None, # Adicionei o _
+    *args,
+    **kwargs,
+):
+    """
+    Gera uma chave de cache única baseada APENAS na lat, long e radius.
+    Ignora 'db' e 'current_user' para não quebrar o Redis.
+    """
+    lat = kwargs.get("latitude")
+    lon = kwargs.get("longitude")
+    rad = kwargs.get("radius")
+    
+    # Ex: godrive-cache:search:-23.55:-46.63:10.0
+    return f"godrive-cache:search:{lat}:{lon}:{rad}"
 
 @router.post("/me/documents")
 def upload_documents(
@@ -88,6 +110,7 @@ def create_instructor_profile(
         raise HTTPException(status_code=400, detail=f"Erro ao criar perfil: {str(e)}")
 
 @router.get("/search", response_model=List[InstructorResponse])
+@cache(expire=60, key_builder=search_key_builder) # <--- USAMOS O BUILDER AQUI
 def search_instructors(
     latitude: float,
     longitude: float,
@@ -97,6 +120,7 @@ def search_instructors(
 ):
     """
     Busca instrutores próximos num raio de X km.
+    (Cacheado por 1 minuto no Redis)
     """
     instructors = repo.get_by_radius(db, lat=latitude, long=longitude, radius_km=radius)
     return instructors

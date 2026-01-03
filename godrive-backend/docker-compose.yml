@@ -14,6 +14,14 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # --- NOVO SERVIÇO: REDIS ---
+  redis:
+    image: redis:alpine
+    container_name: godrive_redis
+    restart: always
+    ports:
+      - "6379:6379"
+
   backend:
     build: .
     container_name: godrive_backend
@@ -24,10 +32,13 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/godrive
-      - STRIPE_API_KEY=sk_test_placeholder  # <--- Adicionar
-      - STRIPE_WEBHOOK_SECRET=whsec_placeholder # <--- Adicionar
+      - STRIPE_API_KEY=sk_test_placeholder
+      - STRIPE_WEBHOOK_SECRET=whsec_placeholder
+      # --- NOVA VARIÁVEL ---
+      - REDIS_URL=redis://redis:6379 # 'redis' é o nome do serviço acima
     depends_on:
       - db
+      - redis # Garante que o Redis suba antes do backend
 
 volumes:
   postgres_data:

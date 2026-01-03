@@ -72,49 +72,6 @@ def read_my_rides(
     else:
         return ride_repo.get_by_student(db, student_id=current_user.id)
 
-# --- NOVOS ENDPOINTS DE CONTROLE DE ESTADO ---
-
-@router.patch("/{ride_id}/start", response_model=RideResponse)
-async def start_ride(
-    ride_id: int,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user)
-):
-    """
-    Instrutor inicia a aula.
-    Muda status para IN_PROGRESS e notifica o aluno via WebSocket.
-    """
-    ride = ride_repo.get_by_id(db, ride_id)
-    if not ride:
-        raise HTTPException(status_code=404, detail="Aula não encontrada.")
-
-    # 1. Apenas o Instrutor pode iniciar
-    if ride.instructor_id != current_user.id and getattr(current_user.instructor_profile, 'id', None) != ride.instructor_id:
-         # Verificação dupla para garantir (id do user ou id do perfil)
-         if current_user.id != ride.instructor_id: # Simplificação assumindo ID User = ID Instrutor
-            raise HTTPException(status_code=403, detail="Apenas o instrutor responsável pode iniciar a aula.")
-
-    # 2. Validação de Status
-    if ride.status != RideStatus.SCHEDULED:
-        raise HTTPException(status_code=400, detail=f"Não é possível iniciar uma aula com status '{ride.status}'. A aula deve estar agendada e paga.")
-
-    # 3. Validação de Horário (Tolerância de 15 min antes ou depois)
-    # now = datetime.now(timezone.utc)
-    # scheduled = ride.scheduled_at
-    # margin = timedelta(minutes=15)
-    # if not (scheduled - margin <= now <= scheduled + timedelta(minutes=60)): # 60 min de duração max estimada para start
-    #     raise HTTPException(status_code=400, detail="Você só pode iniciar a aula próximo ao horário agendado.")
-
-    # 4. Atualização de Estado
-    ride.status = RideStatus.IN_PROGRESS
-    ride.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(ride)
-
-    # 5. Notificação via WebSocket (Opcional, mas recomendado)
-    await socket_manager.broadcast_location(ride.id, {"type": "RIDE_STARTED", "message": "A aula começou!"})
-
-    return ride
 
 @router.patch("/{ride_id}/finish", response_model=RideResponse)
 async def finish_ride(

@@ -14,21 +14,31 @@ class InstructorProfile(Base):
     __tablename__ = "instructor_profiles"
 
     # A chave primária é também uma chave estrangeira para users
-    # Isso garante a relação 1:1 forte
     id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     
     bio = Column(Text, nullable=True)
-    hourly_rate = Column(Float, nullable=True)      # Preço da hora/aula
-    cnh_category = Column(String, nullable=True)    # Ex: "B", "A", "AD"
-    vehicle_model = Column(String, nullable=True)   # Ex: "Gol G5 Branco"
+    hourly_rate = Column(Float, nullable=True)
+    cnh_category = Column(String, nullable=True)
+    vehicle_model = Column(String, nullable=True)
     
-    # --- CAMPO MÁGICO DO POSTGIS ---
     # Geometry('POINT', srid=4326) armazena coordenadas GPS (Lat/Lon)
     location = Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)
 
-    # NOVOS CAMPOS
-    status = Column(Enum(InstructorStatus), default=InstructorStatus.PENDING, nullable=False)
+    # --- CORREÇÃO AQUI ---
+    # Adicionamos 'values_callable' para garantir que o SQLAlchemy use "pending" e não "PENDING"
+    status = Column(
+        Enum(
+            InstructorStatus, 
+            values_callable=lambda x: [e.value for e in x]
+        ), 
+        default=InstructorStatus.PENDING, 
+        nullable=False
+    )
+    
     cnh_url = Column(String, nullable=True)
     vehicle_doc_url = Column(String, nullable=True)
+    
+    # Campo novo (migração 5f50b...) - Adicione se não estiver no seu arquivo local ainda
+    stripe_account_id = Column(String, nullable=True, unique=True)
 
     user = relationship("User", back_populates="instructor_profile")

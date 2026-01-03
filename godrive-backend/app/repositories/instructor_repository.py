@@ -4,6 +4,7 @@ from app.models.instructor import InstructorProfile, InstructorStatus # <--- Imp
 from app.models.user import User
 from app.schemas.instructor import InstructorCreate
 from geoalchemy2.elements import WKTElement
+from geoalchemy2 import Geography
 
 class InstructorRepository:
     
@@ -33,23 +34,22 @@ class InstructorRepository:
         # Ponto de referência (Aluno)
         ref_point = func.ST_SetSRID(func.ST_MakePoint(long, lat), 4326)
         
-        # Filtro Geoespacial:
-        # Usamos cast para Geography para calcular em METROS
-        # radius_km * 1000 = metros
+        # Usar o tipo Geography do geoalchemy2 para cast — evita erros de cache do SQLAlchemy
+        distance_expr = (func.ST_Distance(
+            InstructorProfile.location.cast(Geography),
+            ref_point.cast(Geography)
+        ) / 1000).label("distance")
+        
         query = db.query(
             InstructorProfile,
-            # Calcula a distância em km para exibir no front
-            (func.ST_Distance(
-                InstructorProfile.location.cast(func.geography()), 
-                ref_point.cast(func.geography())
-            ) / 1000).label("distance")
+            distance_expr
         ).join(User).filter(
             func.ST_DWithin(
-                InstructorProfile.location.cast(func.geography()),
-                ref_point.cast(func.geography()),
-                radius_km * 1000 # Metros
+                InstructorProfile.location.cast(Geography),
+                ref_point.cast(Geography),
+                radius_km * 1000  # Metros
             )
-        ).order_by("distance") # Ordena do mais próximo para o mais longe
+        ).order_by(distance_expr)  # Ordena do mais próximo para o mais longe
         
         results = query.all()
         
