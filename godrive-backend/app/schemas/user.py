@@ -14,9 +14,10 @@ class UserResponse(BaseModel):
     full_name: str | None = None
     email: EmailStr
     is_active: bool
+    has_pending_reviews: bool = False
     
-    # Novo campo: Se True, o app deve abrir o modal de avaliação
-    has_pending_reviews: bool = False 
+    # 👇 ADICIONE ESTA LINHA
+    user_type: str | None = None 
 
     class Config:
         from_attributes = True

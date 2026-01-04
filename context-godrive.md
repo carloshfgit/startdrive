@@ -79,5 +79,4 @@ Essa stack foi escolhida para garantir **alta escalabilidade** (graças ao FastA
 
 * **Segurança:** Criptografia de dados sensíveis (LGPD) e autenticação JWT.  
 * **Disponibilidade:** SLA de 99.5%.  
-* **Mobile First:** Interface otimizada para uso na rua.  
-  
+* **Mobile First:** Interface otimizada para uso na rua.
