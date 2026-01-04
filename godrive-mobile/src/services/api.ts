@@ -1,36 +1,21 @@
 // Arquivo: src/services/api.ts
 
 import axios from 'axios';
-import { Platform } from 'react-native';
-import { useAuthStore } from '@/stores/useAuthStore'; // Importação circular resolvida via getState()
-
-// ⚠️ CONFIGURAÇÃO DE AMBIENTE
-// Android Emulator: 10.0.2.2
-// iOS Simulator: localhost
-// Físico: Substitua pelo seu IP local (ex: http://192.168.x.x:8000/api/v1)
-const LOCALHOST_ANDROID = 'http://10.0.2.2:8000/api/v1';
-const LOCALHOST_IOS = 'http://localhost:8000/api/v1';
-
-export const BASE_URL = Platform.OS === 'android' ? LOCALHOST_ANDROID : LOCALHOST_IOS;
+import { useAuthStore } from '@/stores/useAuthStore'; 
+import { ENV } from '@/config/env'; // <--- Importação da config
 
 export const api = axios.create({
-  baseURL: BASE_URL,
-  timeout: 10000,
+  baseURL: ENV.API_URL, // Usa a URL definida no env.ts
+  timeout: ENV.TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// ----------------------------------------------------------------------
-// 🕵️ INTERCEPTORS (O Segredo do Token)
-// ----------------------------------------------------------------------
-
-// Request: Injeta o Token JWT se existir
+// ... (Mantenha os interceptors de Request e Response exatamente como estavam) ...
 api.interceptors.request.use(
   async (config) => {
-    // Acessa o token diretamente do estado do Zustand
     const token = useAuthStore.getState().token;
-
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -41,13 +26,10 @@ api.interceptors.request.use(
   }
 );
 
-// Response: Tratamento global de erros
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expirado ou inválido: força logout
-      console.warn('⚠️ 401 Unauthorized - Deslogando usuário');
       useAuthStore.getState().signOut();
     }
     return Promise.reject(error);

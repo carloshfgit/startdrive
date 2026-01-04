@@ -1,4 +1,57 @@
+# ----------------------
+# GLOBAL & BACKEND
+# ----------------------
 .venv/
 __pycache__/
-godrive-backend/.env
+*.py[cod]
 .DS_Store
+
+# Backend Env
+godrive-backend/.env
+
+# ----------------------
+# MOBILE (godrive-mobile)
+# ----------------------
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native Credentials & Keys
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+# Metro
+.metro-health-check*
+
+# Logs & Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Local Env Files (Mobile)
+.env*.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Generated Native Folders (Expo Prebuild)
+# (Barras iniciais removidas para casar com subpastas)
+ios/
+android/
+.kotlin/
+
+# Ignorar configurações locais (com IP)
+godrive-mobile/src/config/env.ts
+
+# Caso você crie outros arquivos de ambiente no futuro
+.env
+.env.local

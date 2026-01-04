@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '@/services/api';
-import { LoginCredentials, TokenResponse, User } from '@/types/auth';
+import { LoginCredentials, RegisterData, TokenResponse, User } from '@/types/auth';
 
 interface AuthState {
   token: string | null;
@@ -15,6 +15,7 @@ interface AuthState {
 
   // Actions
   signIn: (credentials: LoginCredentials) => Promise<void>;
+  signUp: (data: RegisterData) => Promise<void>; // ✅ Nova Action
   signOut: () => void;
   clearError: () => void;
 }
@@ -31,20 +32,24 @@ export const useAuthStore = create<AuthState>()(
       signIn: async ({ username, password }) => {
         set({ isLoading: true, error: null });
         try {
-          // 1. Obter o Token (OAuth2 standard form-data vs JSON)
-          // O dev-mobile indica JSON. Se der erro 422, troque para form-urlencoded.
+          // ⚠️ CORREÇÃO CRÍTICA PARA FASTAPI OAUTH2 ⚠️
+          // O backend espera form-urlencoded, não JSON.
+          const params = new URLSearchParams();
+          params.append('username', username);
+          params.append('password', password);
+
           const { data: tokenData } = await api.post<TokenResponse>(
             '/login/access-token', 
-            { username, password },
+            params.toString(), // Envia como string formatada
             { 
-               headers: { 'Content-Type': 'application/x-www-form-urlencoded' } // FastAPI OAuth2 padrão exige isso
+               headers: { 'Content-Type': 'application/x-www-form-urlencoded' } 
             }
           );
 
-          // Salva o token temporariamente para a próxima requisição usar
+          // Salva token temporariamente
           set({ token: tokenData.access_token });
 
-          // 2. Com o token salvo, buscamos os dados do usuário logado
+          // Busca dados do usuário
           const { data: userData } = await api.get<User>('/users/me');
 
           set({
@@ -55,14 +60,35 @@ export const useAuthStore = create<AuthState>()(
           });
 
         } catch (error: any) {
-            const msg = error.response?.data?.detail || 'Erro ao entrar. Verifique seus dados.';
+            console.error(error);
+            const msg = error.response?.data?.detail || 'Erro ao entrar. Verifique suas credenciais.';
             set({ 
                 error: msg, 
                 isLoading: false, 
                 token: null, 
                 isAuthenticated: false 
             });
-            throw error;
+            throw error; // Repassa erro para a tela tratar se precisar
+        }
+      },
+
+      // ✅ Implementação do SignUp
+      signUp: async (registerData) => {
+        set({ isLoading: true, error: null });
+        try {
+          // 1. Cria o usuário (POST /users/)
+          await api.post('/users/', registerData);
+          
+          // 2. Faz o login automático após cadastro (UX melhor)
+          await get().signIn({ 
+            username: registerData.email, 
+            password: registerData.password 
+          });
+          
+        } catch (error: any) {
+          const msg = error.response?.data?.detail || 'Erro ao cadastrar. Tente outro email.';
+          set({ isLoading: false, error: msg });
+          throw error;
         }
       },
 
