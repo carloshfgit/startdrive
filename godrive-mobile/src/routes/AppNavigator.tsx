@@ -1,36 +1,29 @@
-// Arquivo: src/routes/AppNavigator.tsx
-
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+// REMOVA ou comente a importação abaixo se não for usar mais nada dela
+// import { NavigationContainer } from '@react-navigation/native'; 
 import { useAuthStore } from '../stores/useAuthStore';
 
-// 📂 Importações atualizadas conforme sua nova estrutura de pastas
+// Telas
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
-import { HomeScreen } from '../screens/student/HomeScreen'; // Assumindo que a Home principal é do aluno por enquanto
+import { AppTabs } from './AppTabs';
 
-// Definição dos tipos das rotas
-export type RootStackParamList = {
-  Login: undefined;
-  Register: undefined;
-  Home: undefined;
-};
-
-const Stack = createNativeStackNavigator<RootStackParamList>();
+const Stack = createNativeStackNavigator();
 
 export const AppNavigator = () => {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const token = useAuthStore((state) => state.token);
+  const isAuthenticated = !!token;
 
+  // REMOVEMOS O <NavigationContainer> DAQUI
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {isAuthenticated ? (
-        // 🟢 STACK DE APP (Logado vai para Student Home)
-        <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="AppTabs" component={AppTabs} />
       ) : (
-        // 🔴 STACK DE AUTH
         <Stack.Group>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Register" component={RegisterScreen} />
         </Stack.Group>
       )}
     </Stack.Navigator>
