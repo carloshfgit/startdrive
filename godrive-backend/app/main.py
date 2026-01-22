@@ -1,6 +1,6 @@
 from fastapi import FastAPI
-from app.api.v1.router import api_router
-from app.core.config import settings
+from app.interface.api.v1.router import api_router
+from app.infrastructure.config.settings import settings
 
 # --- NOVOS IMPORTS ---
 from fastapi_cache import FastAPICache
